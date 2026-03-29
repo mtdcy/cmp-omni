@@ -21,51 +21,56 @@ source.get_keyword_pattern = function()
 end
 
 source.complete = function(self, params, callback)
+  -- 第一次调用：同步获取光标位置偏移量（计算量小，速度快）
   local offset_0 = self:_invoke(vim.bo.omnifunc, { 1, '' })
   if type(offset_0) ~= 'number' then
     return callback()
   end
-  local result = self:_invoke(vim.bo.omnifunc, { 0, string.sub(params.context.cursor_before_line, offset_0 + 1) })
-  if type(result) ~= 'table' then
-    return callback()
-  end
-
-  local text_edit_range = {
-    start = {
-      line = params.context.cursor.line,
-      character = offset_0,
-    },
-    ['end'] = {
-      line = params.context.cursor.line,
-      character = params.context.cursor.character,
-    },
-  }
-
-  local items = {}
-  for _, v in ipairs(result) do
-    if type(v) == 'string' then
-      table.insert(items, {
-        label = v,
-        textEdit = {
-          range = text_edit_range,
-          newText = v,
-        },
-      })
-    elseif type(v) == 'table' then
-      table.insert(items, {
-        label = v.abbr or v.word,
-        textEdit = {
-          range = text_edit_range,
-          newText = v.word,
-        },
-        labelDetails = {
-          detail = v.kind,
-          description = v.menu,
-        },
-      })
+  
+  -- 第二次调用：异步获取补全项列表（可能耗时）
+  vim.defer_fn(function()
+    local result = self:_invoke(vim.bo.omnifunc, { 0, string.sub(params.context.cursor_before_line, offset_0 + 1) })
+    if type(result) ~= 'table' then
+      return callback()
     end
-  end
-  callback({ items = items })
+
+    local text_edit_range = {
+      start = {
+        line = params.context.cursor.line,
+        character = offset_0,
+      },
+      ['end'] = {
+        line = params.context.cursor.line,
+        character = params.context.cursor.character,
+      },
+    }
+
+    local items = {}
+    for _, v in ipairs(result) do
+      if type(v) == 'string' then
+        table.insert(items, {
+          label = v,
+          textEdit = {
+            range = text_edit_range,
+            newText = v,
+          },
+        })
+      elseif type(v) == 'table' then
+        table.insert(items, {
+          label = v.abbr or v.word,
+          textEdit = {
+            range = text_edit_range,
+            newText = v.word,
+          },
+          labelDetails = {
+            detail = v.kind,
+            description = v.menu,
+          },
+        })
+      end
+    end
+    callback({ items = items })
+  end, 0)
 end
 
 source._invoke = function(_, func, args)
